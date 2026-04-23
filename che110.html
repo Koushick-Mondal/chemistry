@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EcoGuard DevKit | Technical Telemetry (API‑Ready)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Menlo', 'monospace'],
+                    },
+                    colors: {
+                        dark: { 900: '#000000', 800: '#0a0a0a', 700: '#111111', border: '#1f1f1f' }
+                    },
+                    animation: {
+                        'pulse-fast': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body { 
+            background-color: #000000; 
+            color: #d4d4d4;
+            background-image: 
+                linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+        
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #000; }
+        ::-webkit-scrollbar-thumb { background: #333; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+
+        .dev-panel {
+            background: rgba(10, 10, 10, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid #1f1f1f;
+            border-radius: 6px;
+        }
+
+        .premium-input {
+            background: #050505;
+            border: 1px solid #333;
+            color: #fff;
+            transition: border-color 0.1s;
+        }
+        .premium-input:focus { border-color: #4f46e5; outline: none; }
+
+        .terminal-text { font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.5; }
+        .log-info { color: #60a5fa; }
+        .log-warn { color: #fbbf24; }
+        .log-err { color: #f87171; }
+        .log-sys { color: #9ca3af; }
+
+        .cmd-active { opacity: 1 !important; pointer-events: auto !important; }
+        .cmd-modal-active { transform: scale(1) !important; opacity: 1 !important; }
+
+        .json-key { color: #9cdcfe; }
+        .json-string { color: #ce9178; }
+        .json-number { color: #b5cea8; }
+        .json-boolean { color: #569cd6; }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden selection:bg-indigo-500/30">
+
+    <!-- Top Diagnostic Header -->
+    <div class="h-7 border-b border-dark-border bg-dark-800 flex items-center justify-between px-4 text-[10px] font-mono text-zinc-400 shrink-0 z-50">
+        <div class="flex items-center gap-4">
+            <span class="text-indigo-400 font-bold"><i class="fa-solid fa-code-branch mr-1"></i> main</span>
+            <span id="ping-metric"><i class="fa-solid fa-network-wired mr-1"></i> Net: 12ms</span>
+            <span id="cpu-metric"><i class="fa-solid fa-microchip mr-1"></i> CPU: 24.5%</span>
+            <span id="ram-metric"><i class="fa-solid fa-memory mr-1"></i> Mem: 2.1GB/8.0GB</span>
+        </div>
+        <div class="flex items-center gap-4">
+            <span class="flex items-center"><span class="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1.5 animate-pulse-fast"></span> Socket: CONNECTED</span>
+            <span id="server-time">00:00:00 UTC</span>
+        </div>
+    </div>
+
+    <div class="flex flex-1 overflow-hidden">
+        <!-- Thin Left Sidebar -->
+        <aside class="w-14 bg-dark-900 border-r border-dark-border flex flex-col items-center py-4 shrink-0 z-40">
+            <div class="w-8 h-8 rounded bg-indigo-600 flex items-center justify-center mb-6">
+                <i class="fa-solid fa-terminal text-white text-xs"></i>
+            </div>
+            <nav class="flex-1 flex flex-col gap-4 w-full">
+                <a href="#" class="w-full aspect-square border-l-2 border-indigo-500 text-white flex items-center justify-center bg-white/5" title="Dashboard">
+                    <i class="fa-solid fa-chart-line"></i>
+                </a>
+                <a href="#" class="w-full aspect-square border-l-2 border-transparent text-zinc-600 hover:text-zinc-300 flex items-center justify-center" title="API Routes">
+                    <i class="fa-solid fa-route"></i>
+                </a>
+                <a href="#" class="w-full aspect-square border-l-2 border-transparent text-zinc-600 hover:text-zinc-300 flex items-center justify-center" title="Database">
+                    <i class="fa-solid fa-database"></i>
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Workspace -->
+        <main class="flex-1 flex flex-col h-full relative overflow-hidden z-10">
+            
+            <!-- Toolbar -->
+            <header class="h-14 flex items-center justify-between px-6 shrink-0 border-b border-dark-border bg-dark-900/80 backdrop-blur-md">
+                <div class="flex items-center gap-3">
+                    <h1 class="text-sm font-semibold text-white font-mono tracking-tight">EcoGuard.DevKit()</h1>
+                    <span class="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 text-[9px] font-mono border border-zinc-700">v2.5.0-live</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <button onclick="toggleCommandPalette()" class="flex items-center px-3 py-1.5 bg-dark-800 hover:bg-dark-700 rounded border border-dark-border text-zinc-400 text-[11px] font-mono transition-colors group">
+                        <i class="fa-solid fa-magnifying-glass mr-2 text-zinc-500"></i>
+                        Ctrl+K / Cmd+K to search
+                    </button>
+                    <button id="auto-sim-btn" onclick="toggleAutoSimulate()" class="h-7 px-3 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold font-mono transition-all flex items-center">
+                        <i class="fa-solid fa-play mr-1.5"></i> STREAM()
+                    </button>
+                </div>
+            </header>
+
+            <!-- Scrollable Content -->
+            <div class="flex-1 overflow-y-auto p-6 scroll-smooth">
+                <div class="max-w-[1600px] mx-auto flex flex-col gap-6">
+                    
+                    <!-- KPI Cards (now 5: temp, humidity, pm25, pm10, co2) -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4" id="cards-container"></div>
+
+                    <!-- Lower Section -->
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 h-auto lg:h-[450px]">
+                        
+                        <!-- Event Firehose & Raw JSON Inspector -->
+                        <div class="dev-panel lg:col-span-8 flex flex-col overflow-hidden relative">
+                            <div class="px-4 py-3 border-b border-dark-border flex justify-between items-center bg-dark-800 z-10">
+                                <div class="flex gap-4">
+                                    <button onclick="switchTab('table')" id="tab-table" class="text-[11px] font-mono text-indigo-400 border-b-2 border-indigo-400 pb-1">Data Table</button>
+                                    <button onclick="switchTab('json')" id="tab-json" class="text-[11px] font-mono text-zinc-500 hover:text-zinc-300 pb-1 border-b-2 border-transparent">Raw Payload</button>
+                                </div>
+                                <div class="flex gap-2">
+                                    <span class="text-[9px] font-mono text-zinc-500 flex items-center">
+                                        <i class="fa-solid fa-circle text-emerald-500 text-[6px] mr-1 animate-pulse"></i> ws://127.0.0.1:8080/stream
+                                    </span>
+                                </div>
+                            </div>
+                            
+                            <div id="view-table" class="flex-1 overflow-y-auto p-1 relative z-0 block">
+                                <table class="w-full text-left border-collapse relative">
+                                    <thead class="sticky top-0 bg-dark-800 z-20">
+                                        <tr class="text-[9px] uppercase font-mono text-zinc-500 border-b border-dark-border">
+                                            <th class="px-4 py-2 w-32">Timestamp</th>
+                                            <th class="px-4 py-2">Metric</th>
+                                            <th class="px-4 py-2 text-right">Value</th>
+                                            <th class="px-4 py-2 text-center w-28">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="logs-container" class="text-xs divide-y divide-dark-border relative z-10 font-mono"></tbody>
+                                </table>
+                            </div>
+
+                            <div id="view-json" class="flex-1 overflow-y-auto p-4 bg-[#0a0a0a] hidden">
+                                <pre id="json-stream" class="text-[10px] font-mono leading-relaxed"></pre>
+                            </div>
+                        </div>
+
+                        <!-- Right Column -->
+                        <div class="lg:col-span-4 flex flex-col gap-4">
+                            
+                            <!-- Configuration (Rule Engine) -->
+                            <div class="dev-panel flex flex-col flex-1 overflow-hidden min-h-[220px]">
+                                <div class="px-4 py-3 border-b border-dark-border bg-dark-800 shrink-0 flex justify-between items-center">
+                                    <h3 class="text-[11px] text-zinc-300 font-mono"><i class="fa-solid fa-code-compare mr-2 text-emerald-400"></i>rules.config.json</h3>
+                                </div>
+                                <div class="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                                    <div id="rules-container" class="space-y-3"></div>
+                                </div>
+                            </div>
+
+                            <!-- External API Integration + AQI -->
+                            <div class="dev-panel flex flex-col shrink-0">
+                                <div class="px-4 py-3 border-b border-dark-border bg-dark-800 flex justify-between items-center">
+                                    <h3 class="text-[11px] text-zinc-300 font-mono"><i class="fa-solid fa-plug mr-2 text-violet-400"></i>ext.api.connector</h3>
+                                </div>
+                                <div class="p-4 flex flex-col gap-3">
+                                    <div class="grid grid-cols-1 gap-2">
+                                        <input type="text" id="api-city" value="London, UK" placeholder="req.query.city" class="premium-input w-full px-2 py-1.5 rounded text-[11px] font-mono">
+                                        <input type="password" id="api-key" value="45330f01b1495c32874acbb61f9de8da" placeholder="req.headers.auth" class="premium-input w-full px-2 py-1.5 rounded text-[11px] font-mono">
+                                    </div>
+                                    <button onclick="toggleWeatherAPI()" id="api-btn" class="w-full bg-dark-800 hover:bg-dark-700 text-zinc-300 border border-dark-border py-1.5 rounded text-[11px] font-mono transition-all">
+                                        fetch()
+                                    </button>
+                                    <!-- AQI Display -->
+                                    <div class="mt-2 p-2 bg-dark-800/50 rounded border border-dark-border">
+                                        <div class="flex justify-between items-center">
+                                            <span class="text-[10px] font-mono text-zinc-400">AQI (US EPA)</span>
+                                            <span id="aqi-value" class="text-xl font-mono font-bold text-white">--</span>
+                                        </div>
+                                        <div class="text-[9px] font-mono" id="aqi-category"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Terminal Console -->
+            <div class="h-32 border-t border-dark-border bg-dark-900 flex flex-col shrink-0">
+                <div class="h-6 bg-dark-800 border-b border-dark-border flex items-center px-3 justify-between">
+                    <span class="text-[9px] font-mono text-zinc-400 uppercase tracking-widest">System Terminal</span>
+                    <button onclick="clearTerminal()" class="text-zinc-500 hover:text-zinc-300"><i class="fa-solid fa-trash-can text-[10px]"></i></button>
+                </div>
+                <div id="terminal-output" class="flex-1 p-2 overflow-y-auto custom-scrollbar terminal-text"></div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Command Palette Modal -->
+    <div id="cmd-palette" class="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-start justify-center pt-[15vh] opacity-0 pointer-events-none transition-opacity duration-150" onclick="if(event.target===this) toggleCommandPalette()">
+        <div id="cmd-modal" class="bg-[#050505] border border-zinc-800 w-full max-w-xl rounded-lg shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden transform scale-95 opacity-0 transition-all duration-150 flex flex-col max-h-[60vh]">
+            <div class="px-4 py-3 border-b border-zinc-800 flex items-center bg-[#0a0a0a]">
+                <i class="fa-solid fa-angle-right text-indigo-500 mr-3"></i>
+                <input type="text" id="cmd-input" class="bg-transparent border-none text-zinc-200 w-full focus:outline-none placeholder-zinc-600 font-mono text-sm" placeholder="Execute command..." autocomplete="off">
+            </div>
+            <div class="p-1 overflow-y-auto flex-1" id="cmd-results"></div>
+        </div>
+    </div>
+
+    <script>
+        // --------------------------------------------------------------
+        //  ENTERPRISE STATE – with 5 metrics + thresholds persist
+        // --------------------------------------------------------------
+        const DATA_POINTS = 50;
+        
+        // Default thresholds
+        const DEFAULT_THRESHOLDS = {
+            temperature: { min: 15.0, max: 35.0, unit: "°C", label: "temp_c" },
+            humidity:    { min: 30.0, max: 60.0, unit: "%", label: "hum_pct" },
+            pm25:        { min: 0.0,  max: 12.0, unit: "µg/m³", label: "pm2_5" },
+            pm10:        { min: 0.0,  max: 35.0, unit: "µg/m³", label: "pm10" },
+            co2:         { min: 400.0, max: 1000.0, unit: "ppm", label: "co2_ppm" }
+        };
+        
+        // Load thresholds from localStorage or defaults
+        let system_thresholds = loadThresholds();
+        
+        function loadThresholds() {
+            const saved = localStorage.getItem('ecoguard_thresholds');
+            if (saved) {
+                try {
+                    return JSON.parse(saved);
+                } catch(e) {}
+            }
+            return JSON.parse(JSON.stringify(DEFAULT_THRESHOLDS));
+        }
+        
+        function saveThresholds() {
+            localStorage.setItem('ecoguard_thresholds', JSON.stringify(system_thresholds));
+        }
+        
+        // Current readings state
+        let system_current = {
+            temperature: { value: 22.5, status: "Safe", last_updated: null },
+            humidity:    { value: 45.0, status: "Safe", last_updated: null },
+            pm25:        { value: 8.2,  status: "Safe", last_updated: null },
+            pm10:        { value: 18.5, status: "Safe", last_updated: null },
+            co2:         { value: 450,  status: "Safe", last_updated: null }
+        };
+        
+        // History arrays for charts
+        let system_history = {
+            temperature: Array(DATA_POINTS).fill(22.5),
+            humidity: Array(DATA_POINTS).fill(45.0),
+            pm25: Array(DATA_POINTS).fill(8.2),
+            pm10: Array(DATA_POINTS).fill(18.5),
+            co2: Array(DATA_POINTS).fill(450)
+        };
+        
+        let momentum = { temperature: 0, humidity: 0, pm25: 0, pm10: 0, co2: 0 };
+        let logs = [];           // for table view
+        let raw_json_buffer = []; // for raw payload
+        
+        let charts = {};
+        let autoSimInterval = null;
+        let apiInterval = null;
+        let isApiConnected = false;
+        
+        // Hardware stats (cosmetic)
+        let dev_state = { cpu: 24.5, ram: 2.1, ping: 12 };
+        
+        // Theme colors
+        const themeColors = {
+            "Safe": { hex: "#10b981", text: "text-emerald-400" },
+            "Low Alert": { hex: "#f59e0b", text: "text-amber-400" },
+            "High Alert": { hex: "#ef4444", text: "text-rose-400" }
+        };
+        
+        // --------------------------------------------------------------
+        //  HELPER FUNCTIONS
+        // --------------------------------------------------------------
+        function evaluateStatus(metricKey, value) {
+            const limits = system_thresholds[metricKey];
+            if (value < limits.min) return "Low Alert";
+            if (value > limits.max) return "High Alert";
+            return "Safe";
+        }
+        
+        function addLog(metricKey, value, status, source = "local_sim") {
+            const now = new Date();
+            const timestamp = now.toISOString().split('T')[1].slice(0, -1);
+            const label = system_thresholds[metricKey].label;
+            
+            // Table log
+            logs.unshift({ timestamp, sensor: label, value: value.toFixed(2), status });
+            if (logs.length > 50) logs.pop();
+            
+            // Raw JSON payload
+            const rawPayload = {
+                id: crypto.randomUUID().split('-')[0],
+                ts: now.toISOString(),
+                metric: label,
+                val: parseFloat(value),
+                eval_state: status,
+                src: source
+            };
+            raw_json_buffer.unshift(rawPayload);
+            if (raw_json_buffer.length > 10) raw_json_buffer.pop();
+            
+            // Terminal notification on alert
+            if (status !== 'Safe') {
+                devLog(`Threshold Violation [${label}]: ${value.toFixed(2)} ${system_thresholds[metricKey].unit} (${status})`, 'err');
+            }
+        }
+        
+        function updateUI() {
+            // Update cards and charts
+            for (let key of Object.keys(system_current)) {
+                const details = system_current[key];
+                const status = details.status;
+                const style = themeColors[status] || themeColors["Safe"];
+                
+                const valEl = document.getElementById(`val-${key}`);
+                const badge = document.getElementById(`badge-${key}`);
+                if (valEl) {
+                    valEl.innerText = details.value;
+                    valEl.className = `text-2xl font-mono tracking-tighter ${status === 'Safe' ? 'text-white' : style.text}`;
+                }
+                if (badge) {
+                    badge.innerText = status;
+                    badge.className = `text-[9px] font-mono font-bold uppercase ${style.text}`;
+                }
+                
+                if (charts[key]) {
+                    charts[key].data.datasets[0].data = system_history[key];
+                    charts[key].data.datasets[0].borderColor = status === 'Safe' ? '#3f3f46' : style.hex;
+                    charts[key].update();
+                }
+            }
+            
+            // Update table
+            const container = document.getElementById('logs-container');
+            if (container) {
+                container.innerHTML = logs.map(log => {
+                    const isAlert = log.status !== 'Safe';
+                    const style = themeColors[isAlert ? 'High Alert' : 'Safe'];
+                    return `<tr class="hover:bg-white/[0.02] transition-colors cursor-crosshair">
+                        <td class="px-4 py-2 text-zinc-500 whitespace-nowrap">${log.timestamp}</td>
+                        <td class="px-4 py-2 text-zinc-300">${log.sensor}</td>
+                        <td class="px-4 py-2 text-right ${isAlert ? style.text : 'text-zinc-100'}">${log.value}</td>
+                        <td class="px-4 py-2 text-center">
+                            <span class="inline-block bg-dark-900 px-1.5 py-0.5 border border-dark-border rounded text-[9px] ${style.text}">${log.status}</span>
+                        </td>
+                    </tr>`;
+                }).join('');
+            }
+            
+            // Update JSON view
+            const jsonView = document.getElementById('json-stream');
+            if (jsonView) {
+                if (raw_json_buffer.length > 0) {
+                    jsonView.innerHTML = syntaxHighlight(raw_json_buffer);
+                } else {
+                    jsonView.innerHTML = '<span class="text-zinc-600">// Buffer empty. Waiting for payload...</span>';
+                }
+            }
+            
+            // Update AQI (based on PM2.5)
+            const pm25 = system_current.pm25.value;
+            const aqiData = computeAQI(pm25);
+            document.getElementById('aqi-value').innerText = aqiData.aqi;
+            document.getElementById('aqi-category').innerHTML = `<span class="text-${aqiData.color}">${aqiData.category}</span> – ${aqiData.advice}`;
+        }
+        
+        function computeAQI(pm25) {
+            if (pm25 <= 12) return { aqi: Math.round(50 * pm25/12), category: "Good", advice: "Ideal", color: "emerald-400" };
+            if (pm25 <= 35.4) return { aqi: Math.round(50 + (pm25-12)*(50/23.4)), category: "Moderate", advice: "Sensitive groups reduce exertion", color: "amber-400" };
+            if (pm25 <= 55.4) return { aqi: Math.round(100 + (pm25-35.5)*(50/20)), category: "Unhealthy for Sensitive", advice: "Limit prolonged outdoor activity", color: "orange-400" };
+            if (pm25 <= 150.4) return { aqi: Math.round(150 + (pm25-55.5)*(50/95)), category: "Unhealthy", advice: "Avoid outdoor activities", color: "rose-400" };
+            return { aqi: Math.min(300, 200 + (pm25-150.5)*100/150), category: "Very Unhealthy", advice: "Health warnings", color: "red-400" };
+        }
+        
+        // Simulation engine (realistic)
+        function simulateData() {
+            const sensors = Object.keys(system_thresholds);
+            for (let sType of sensors) {
+                const limits = system_thresholds[sType];
+                const range = limits.max - limits.min;
+                const mean = (limits.max + limits.min) / 2;
+                let lastVal = system_history[sType][system_history[sType].length - 1];
+                let volatility = range * 0.02;
+                momentum[sType] = momentum[sType] * 0.85 + (Math.random() - 0.5) * volatility;
+                let pullToCenter = (mean - lastVal) * 0.01;
+                let spike = (Math.random() > 0.96) ? (Math.random() > 0.5 ? 1 : -1) * range * 0.2 : 0;
+                let newVal = lastVal + momentum[sType] + pullToCenter + spike;
+                // Clamp to realistic absolute bounds
+                if (sType === 'temperature') newVal = Math.min(45, Math.max(-5, newVal));
+                else if (sType === 'humidity') newVal = Math.min(90, Math.max(10, newVal));
+                else if (sType === 'pm25') newVal = Math.min(300, Math.max(0, newVal));
+                else if (sType === 'pm10') newVal = Math.min(400, Math.max(0, newVal));
+                else if (sType === 'co2') newVal = Math.min(5000, Math.max(300, newVal));
+                
+                const status = evaluateStatus(sType, newVal);
+                system_current[sType] = { value: newVal.toFixed(1), status, last_updated: new Date().toLocaleTimeString() };
+                system_history[sType].shift();
+                system_history[sType].push(newVal);
+                addLog(sType, newVal, status, isApiConnected ? "ext_api" : "local_sim");
+            }
+            updateUI();
+        }
+        
+        // --------------------------------------------------------------
+        //  REAL API (with CORS proxy + Air Pollution)
+        // --------------------------------------------------------------
+        const CORS_PROXY = "https://corsproxy.io/?";
+        
+        async function fetchRealData() {
+            if (!isApiConnected) return;
+            const city = document.getElementById('api-city').value;
+            const apiKey = document.getElementById('api-key').value;
+            devLog(`GET /weather?q=${encodeURIComponent(city)}`, 'sys');
+            
+            try {
+                // Weather (temp, humidity)
+                const weatherUrl = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&appid=${apiKey}&units=metric`;
+                const weatherRes = await fetch(CORS_PROXY + encodeURIComponent(weatherUrl));
+                const weatherData = await weatherRes.json();
+                if (!weatherRes.ok) throw new Error(weatherData.message || "Weather API error");
+                
+                // Air pollution (pm2.5, pm10)
+                const lat = weatherData.coord.lat;
+                const lon = weatherData.coord.lon;
+                const airUrl = `https://api.openweathermap.org/data/2.5/air_pollution?lat=${lat}&lon=${lon}&appid=${apiKey}`;
+                const airRes = await fetch(CORS_PROXY + encodeURIComponent(airUrl));
+                let pm25 = 8, pm10 = 18, co2Est = 450;
+                if (airRes.ok) {
+                    const airData = await airRes.json();
+                    if (airData.list && airData.list[0]) {
+                        pm25 = airData.list[0].components.pm2_5;
+                        pm10 = airData.list[0].components.pm10;
+                        // CO₂ not provided, estimate based on pollution level
+                        co2Est = 400 + pm25 * 8;
+                        if (co2Est > 2000) co2Est = 2000;
+                    }
+                } else {
+                    devLog("Air pollution endpoint unavailable – using estimates", 'warn');
+                }
+                
+                const temp = weatherData.main.temp;
+                const hum = weatherData.main.humidity;
+                const nowStr = new Date().toLocaleTimeString();
+                
+                // Update temperature & humidity
+                for (let [key, val] of [['temperature', temp], ['humidity', hum], ['pm25', pm25], ['pm10', pm10], ['co2', co2Est]]) {
+                    const status = evaluateStatus(key, val);
+                    system_current[key] = { value: val.toFixed(1), status, last_updated: nowStr };
+                    system_history[key].shift();
+                    system_history[key].push(val);
+                    addLog(key, val, status, "ext_api");
+                }
+                updateUI();
+                devLog(`API sync OK: ${temp}°C, ${hum}%, PM2.5=${pm25.toFixed(1)}`, 'info');
+            } catch (err) {
+                devLog(`API fetch failed: ${err.message} – staying on simulation`, 'err');
+                // Don't disconnect, just continue simulation
+            }
+        }
+        
+        // --------------------------------------------------------------
+        //  UI CONTROLS
+        // --------------------------------------------------------------
+        function toggleAutoSimulate() {
+            const btn = document.getElementById('auto-sim-btn');
+            if (autoSimInterval) {
+                clearInterval(autoSimInterval);
+                autoSimInterval = null;
+                btn.innerHTML = '<i class="fa-solid fa-play mr-1.5"></i> STREAM()';
+                btn.className = "h-7 px-3 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold font-mono transition-all flex items-center";
+                devLog('sys.stream.stop() executed.', 'sys');
+            } else {
+                autoSimInterval = setInterval(simulateData, 1000);
+                btn.innerHTML = '<i class="fa-solid fa-pause mr-1.5"></i> HALT()';
+                btn.className = "h-7 px-3 rounded bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-bold font-mono transition-all flex items-center";
+                devLog('sys.stream.start() executed.', 'sys');
+            }
+        }
+        
+        async function toggleWeatherAPI() {
+            const city = document.getElementById('api-city').value;
+            const apiKey = document.getElementById('api-key').value;
+            const btn = document.getElementById('api-btn');
+            
+            if (isApiConnected) {
+                isApiConnected = false;
+                if (apiInterval) clearInterval(apiInterval);
+                btn.innerText = 'fetch()';
+                btn.className = "w-full bg-dark-800 hover:bg-dark-700 text-zinc-300 border border-dark-border py-1.5 rounded text-[11px] font-mono transition-all";
+                devLog('Closed external API connection.', 'sys');
+                // Restart simulation if needed
+                if (!autoSimInterval) toggleAutoSimulate();
+            } else {
+                if (!city || !apiKey) { devLog('Missing API credentials.', 'err'); return; }
+                isApiConnected = true;
+                if (autoSimInterval) toggleAutoSimulate(); // stop simulation to avoid conflict
+                btn.innerText = 'disconnect()';
+                btn.className = "w-full bg-rose-500/20 text-rose-400 border border-rose-500/40 py-1.5 rounded text-[11px] font-mono transition-all";
+                devLog(`Initializing secure connection to OpenWeatherMap...`, 'sys');
+                await fetchRealData(); // immediate fetch
+                apiInterval = setInterval(fetchRealData, 10000); // every 10s
+            }
+        }
+        
+        // --------------------------------------------------------------
+        //  THRESHOLD RULES UI (with persistence)
+        // --------------------------------------------------------------
+        function renderRules() {
+            const container = document.getElementById('rules-container');
+            container.innerHTML = '';
+            for (const [key, th] of Object.entries(system_thresholds)) {
+                container.innerHTML += `
+                    <div class="flex items-center gap-2 group">
+                        <div class="w-20 text-[10px] font-mono text-zinc-400">"${th.label}":</div>
+                        <div class="flex-1 flex gap-1">
+                            <span class="text-zinc-600 text-[10px] font-mono">[</span>
+                            <input type="number" id="min-${key}" value="${th.min}" class="premium-input w-12 text-[10px] font-mono text-center" step="0.1">
+                            <span class="text-zinc-600 text-[10px] font-mono">,</span>
+                            <input type="number" id="max-${key}" value="${th.max}" class="premium-input w-12 text-[10px] font-mono text-center" step="0.1">
+                            <span class="text-zinc-600 text-[10px] font-mono">]</span>
+                        </div>
+                        <button onclick="updateThreshold('${key}')" class="text-[10px] text-zinc-600 hover:text-indigo-400 transition-colors opacity-0 group-hover:opacity-100">
+                            <i class="fa-solid fa-play"></i>
+                        </button>
+                    </div>
+                `;
+            }
+        }
+        
+        window.updateThreshold = function(sensorKey) {
+            const minVal = parseFloat(document.getElementById(`min-${sensorKey}`).value);
+            const maxVal = parseFloat(document.getElementById(`max-${sensorKey}`).value);
+            if (isNaN(minVal) || isNaN(maxVal) || minVal >= maxVal) {
+                devLog('Rule validation failed: min >= max or invalid numbers.', 'err');
+                return;
+            }
+            system_thresholds[sensorKey].min = minVal;
+            system_thresholds[sensorKey].max = maxVal;
+            saveThresholds();
+            // Re-evaluate current readings
+            for (let key of Object.keys(system_current)) {
+                const val = parseFloat(system_current[key].value);
+                const newStatus = evaluateStatus(key, val);
+                system_current[key].status = newStatus;
+            }
+            updateUI();
+            devLog(`Re-compiled engine rules for [${system_thresholds[sensorKey].label}].`, 'sys');
+        };
+        
+        // --------------------------------------------------------------
+        //  CHARTS & UI INIT
+        // --------------------------------------------------------------
+        function initCardsAndCharts() {
+            const container = document.getElementById('cards-container');
+            container.innerHTML = '';
+            Chart.defaults.font.family = 'JetBrains Mono';
+            Chart.defaults.color = '#52525b';
+            
+            const metrics = Object.keys(system_current);
+            for (let key of metrics) {
+                const th = system_thresholds[key];
+                const details = system_current[key];
+                const cardHtml = `
+                    <div class="dev-panel p-4 flex flex-col relative overflow-hidden" id="card-${key}">
+                        <div class="flex justify-between items-start mb-2 z-10">
+                            <h4 class="text-zinc-500 font-mono text-[10px] uppercase tracking-widest">${th.label}</h4>
+                            <span id="badge-${key}" class="text-[9px] font-mono font-bold uppercase ${themeColors[details.status]?.text || 'text-zinc-400'}">
+                                ${details.status}
+                            </span>
+                        </div>
+                        <div class="z-10 flex items-baseline gap-1 mb-2">
+                            <span id="val-${key}" class="text-2xl font-mono text-white tracking-tighter">${details.value}</span>
+                        </div>
+                        <div class="absolute bottom-0 left-0 right-0 h-16 opacity-70">
+                            <canvas id="chart-${key}"></canvas>
+                        </div>
+                    </div>
+                `;
+                container.innerHTML += cardHtml;
+            }
+            
+            for (let key of metrics) {
+                const ctx = document.getElementById(`chart-${key}`).getContext('2d');
+                charts[key] = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: Array(DATA_POINTS).fill(''),
+                        datasets: [{
+                            data: system_history[key],
+                            borderColor: '#3f3f46',
+                            borderWidth: 1.5,
+                            tension: 0,
+                            pointRadius: 0,
+                            fill: false,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        layout: { padding: 0 },
+                        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                        scales: { 
+                            x: { display: false }, 
+                            y: { display: false, min: system_thresholds[key].min * 0.8, max: system_thresholds[key].max * 1.2 } 
+                        },
+                        animation: { duration: 0 }
+                    }
+                });
+            }
+        }
+        
+        // --------------------------------------------------------------
+        //  TERMINAL, COMMAND PALETTE, ETC.
+        // --------------------------------------------------------------
+        function devLog(msg, level = 'sys') {
+            const term = document.getElementById('terminal-output');
+            const time = new Date().toISOString().split('T')[1].slice(0, -1);
+            let colorClass = 'log-sys';
+            if (level === 'info') colorClass = 'log-info';
+            if (level === 'warn') colorClass = 'log-warn';
+            if (level === 'err') colorClass = 'log-err';
+            const line = document.createElement('div');
+            line.innerHTML = `<span class="text-zinc-600">[${time}]</span> <span class="${colorClass}">${level.toUpperCase()}</span>: ${msg}`;
+            term.appendChild(line);
+            term.scrollTop = term.scrollHeight;
+        }
+        
+        window.clearTerminal = function() {
+            document.getElementById('terminal-output').innerHTML = '';
+            devLog('Terminal output cleared by user.', 'sys');
+        };
+        
+        function syntaxHighlight(json) {
+            let str = JSON.stringify(json, null, 2);
+            str = str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return str.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+                let cls = 'json-number';
+                if (/^"/.test(match)) {
+                    if (/:$/.test(match)) cls = 'json-key';
+                    else cls = 'json-string';
+                } else if (/true|false/.test(match)) {
+                    cls = 'json-boolean';
+                }
+                return '<span class="' + cls + '">' + match + '</span>';
+            });
+        }
+        
+        function switchTab(tabId) {
+            document.getElementById('view-table').classList.add('hidden');
+            document.getElementById('view-json').classList.add('hidden');
+            document.getElementById('tab-table').className = "text-[11px] font-mono text-zinc-500 hover:text-zinc-300 pb-1 border-b-2 border-transparent";
+            document.getElementById('tab-json').className = "text-[11px] font-mono text-zinc-500 hover:text-zinc-300 pb-1 border-b-2 border-transparent";
+            document.getElementById(`view-${tabId}`).classList.remove('hidden');
+            document.getElementById(`tab-${tabId}`).className = "text-[11px] font-mono text-indigo-400 border-b-2 border-indigo-400 pb-1";
+            if (tabId === 'json') devLog('Switched view context to RAW JSON stream.', 'sys');
+        }
+        
+        // Command palette logic (simplified but works)
+        const commands = [
+            { icon: "fa-play", title: "sys.stream.start()", desc: "Start local simulation.", action: () => { if (!autoSimInterval) toggleAutoSimulate(); } },
+            { icon: "fa-biohazard text-rose-400", title: "debug.injectAnomaly()", desc: "Force threshold breach.", action: () => { /* optional: force spike */ } },
+            { icon: "fa-code", title: "data.exportJSON()", desc: "Dump memory buffer to disk.", action: () => { const dataStr = JSON.stringify(raw_json_buffer, null, 2); const blob = new Blob([dataStr], {type:'application/json'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `data_${Date.now()}.json`; a.click(); devLog('JSON export completed.', 'info'); } },
+            { icon: "fa-trash-can", title: "logs.flush()", desc: "Clear memory arrays.", action: () => { logs = []; raw_json_buffer = []; updateUI(); devLog('Memory buffers flushed.', 'info'); } },
+        ];
+        
+        let cmdSelectedIndex = 0;
+        function toggleCommandPalette() {
+            const palette = document.getElementById('cmd-palette');
+            const modal = document.getElementById('cmd-modal');
+            const input = document.getElementById('cmd-input');
+            if (palette.classList.contains('cmd-active')) {
+                palette.classList.remove('cmd-active');
+                modal.classList.remove('cmd-modal-active');
+                input.blur();
+            } else {
+                palette.classList.add('cmd-active');
+                modal.classList.add('cmd-modal-active');
+                input.value = '';
+                renderCommands();
+                setTimeout(() => input.focus(), 100);
+            }
+        }
+        document.addEventListener('keydown', (e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); toggleCommandPalette(); }
+            if (e.key === 'Escape' && document.getElementById('cmd-palette').classList.contains('cmd-active')) toggleCommandPalette();
+            if (document.getElementById('cmd-palette').classList.contains('cmd-active')) {
+                const results = document.getElementById('cmd-results').children;
+                if (e.key === 'ArrowDown') { e.preventDefault(); cmdSelectedIndex = (cmdSelectedIndex + 1) % results.length; renderCommands(document.getElementById('cmd-input').value); }
+                else if (e.key === 'ArrowUp') { e.preventDefault(); cmdSelectedIndex = (cmdSelectedIndex - 1 + results.length) % results.length; renderCommands(document.getElementById('cmd-input').value); }
+                else if (e.key === 'Enter') { e.preventDefault(); if (results.length > 0) results[cmdSelectedIndex].click(); }
+            }
+        });
+        document.getElementById('cmd-input').addEventListener('input', (e) => { cmdSelectedIndex = 0; renderCommands(e.target.value); });
+        function renderCommands(filter = '') {
+            const container = document.getElementById('cmd-results');
+            container.innerHTML = '';
+            const filtered = commands.filter(c => c.title.toLowerCase().includes(filter.toLowerCase()) || c.desc.toLowerCase().includes(filter.toLowerCase()));
+            filtered.forEach((cmd, index) => {
+                const isSelected = index === cmdSelectedIndex;
+                const div = document.createElement('div');
+                div.className = `px-3 py-2 rounded cursor-pointer flex items-center transition-colors font-mono ${isSelected ? 'bg-indigo-600/20 text-indigo-400' : 'hover:bg-white/5 text-zinc-400'}`;
+                div.innerHTML = `<i class="fa-solid ${cmd.icon} mr-3 w-4 text-center"></i><div class="text-[11px] font-bold">${cmd.title}</div><div class="text-[10px] text-zinc-600 ml-auto">${cmd.desc}</div>`;
+                div.onclick = () => { toggleCommandPalette(); cmd.action(); };
+                container.appendChild(div);
+            });
+        }
+        
+        // Hardware sim & time
+        setInterval(() => {
+            const now = new Date();
+            document.getElementById('server-time').innerText = now.toISOString();
+            dev_state.cpu = Math.max(5, Math.min(99, dev_state.cpu + (Math.random() - 0.5) * 5));
+            dev_state.ram = Math.max(1.0, Math.min(7.9, dev_state.ram + (Math.random() - 0.5) * 0.1));
+            dev_state.ping = Math.max(2, Math.min(200, dev_state.ping + (Math.random() - 0.5) * 10));
+            document.getElementById('cpu-metric').innerHTML = `<i class="fa-solid fa-microchip mr-1"></i> CPU: ${dev_state.cpu.toFixed(1)}%`;
+            document.getElementById('ram-metric').innerHTML = `<i class="fa-solid fa-memory mr-1"></i> Mem: ${dev_state.ram.toFixed(2)}GB/8.0GB`;
+            document.getElementById('ping-metric').innerHTML = `<i class="fa-solid fa-network-wired mr-1"></i> Net: ${dev_state.ping.toFixed(0)}ms`;
+        }, 1000);
+        
+        // Bootstrap
+        window.onload = () => {
+            devLog('Booting EcoGuard DevKit v2.5.0-live...', 'sys');
+            initCardsAndCharts();
+            renderRules();
+            updateUI();
+            // Start simulation by default
+            setTimeout(() => {
+                devLog('System modules loaded. Awaiting telemetry input.', 'info');
+                toggleAutoSimulate(); // starts simulation
+            }, 800);
+        };
+    </script>
+</body>
+</html>
